@@ -14,9 +14,14 @@ h1{font-size:1.4rem;margin:8px 0}
 p.hint{font-size:.9rem;opacity:.8}
 label{display:block;margin-top:12px;font-weight:600}
 input,select,textarea{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+textarea{min-height:70px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .check{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-weight:normal}
 .check input{width:auto;margin-top:4px}
+.sig-wrap{margin-top:12px}
+.sig-head{display:flex;justify-content:space-between;align-items:center;font-weight:600}
+#pad{width:100%;height:180px;border:1px dashed var(--line);border-radius:8px;background:#fff;touch-action:none;display:block}
+#clearSig{background:none;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:4px 10px;font-size:14px;width:auto;margin:0}
 button{margin-top:20px;width:100%;padding:14px;font-size:17px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:700}
 button:disabled{opacity:.6}
 #msg{margin-top:12px;color:var(--err);white-space:pre-line}
@@ -28,22 +33,39 @@ button:disabled{opacity:.6}
 <main>
   <div id="form-wrap">
     <h1>숙박자 정보 입력</h1>
-    <p class="hint">숙박 명부 작성을 위해 아래 정보를 입력해 주세요. 입력하신 정보는 법령에서 정한 기간 동안만 보관됩니다.</p>
+    <p class="hint">숙박 명부 작성을 위해 아래 정보를 입력하고 서명해 주세요. 입력하신 정보는 정해진 기간 동안만 보관됩니다.</p>
     <form id="f" novalidate>
       <label>성명 <input name="name" required autocomplete="name"></label>
-      <div class="row">
-        <label>생년월일 <input name="birth" type="date" required></label>
-        <label>국적 <input name="nationality" value="대한민국"></label>
-      </div>
       <label>연락처 <input name="phone" type="tel" required placeholder="010-0000-0000" autocomplete="tel"></label>
       <label>주소 <input name="address" required autocomplete="street-address"></label>
       <div class="row">
         <label>입실일 <input name="checkIn" type="date" required></label>
         <label>퇴실일 <input name="checkOut" type="date" required></label>
       </div>
-      <label>동숙 인원(본인 포함) <input name="headcount" type="number" min="1" max="20" value="1" required></label>
+      <label>방문목적
+        <select name="purpose" required>
+          <option value="">선택하세요</option>
+          <option>관광</option><option>업무</option><option>가족·친지 방문</option><option>기타</option>
+        </select>
+      </label>
       <label>차량번호 (선택) <input name="vehicle" placeholder="12가3456"></label>
-      <label>여권번호 (외국인만) <input name="passport"></label>
+      <div class="row">
+        <label>성별 <select name="gender"><option value="">선택 안 함</option><option>남</option><option>여</option></select></label>
+        <label>생년월일 <input name="birth" type="date"></label>
+      </div>
+      <div class="row">
+        <label>국적 <input name="nationality" value="대한민국"></label>
+        <label>여권번호 (외국인만) <input name="passport"></label>
+      </div>
+      <label>동반인 이름 (한 줄에 한 명, 선택)
+        <textarea name="companions" placeholder="홍길순&#10;김철수"></textarea>
+      </label>
+
+      <div class="sig-wrap">
+        <div class="sig-head"><span>서명 (손가락으로 그려 주세요)</span><button type="button" id="clearSig">지우기</button></div>
+        <canvas id="pad"></canvas>
+      </div>
+
       <label class="check"><input type="checkbox" name="consent" required> 개인정보 수집·이용에 동의합니다. (숙박 명부 작성 목적)</label>
       <button type="submit" id="btn">제출하기</button>
       <div id="msg"></div>
@@ -52,6 +74,41 @@ button:disabled{opacity:.6}
   <div id="done"><h1>제출이 완료되었습니다</h1><p>감사합니다. 편안한 숙박 되세요.</p></div>
 </main>
 <script>
+// 손가락/마우스 서명 캔버스
+const pad = document.getElementById('pad');
+const ctx = pad.getContext('2d');
+let drawing = false, hasInk = false;
+function fitCanvas() {
+  const ratio = window.devicePixelRatio || 1;
+  const w = pad.clientWidth, h = pad.clientHeight;
+  // 크기가 바뀌어도 그림이 사라지지 않도록 기존 내용을 보존
+  const old = hasInk ? pad.toDataURL() : null;
+  pad.width = w * ratio; pad.height = h * ratio;
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (old) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = old; }
+}
+function pos(e) {
+  const r = pad.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return { x: p.clientX - r.left, y: p.clientY - r.top };
+}
+function start(e) { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+function move(e) { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasInk = true; }
+function end() { drawing = false; }
+pad.addEventListener('pointerdown', start);
+pad.addEventListener('pointermove', move);
+window.addEventListener('pointerup', end);
+pad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+document.getElementById('clearSig').addEventListener('click', () => {
+  hasInk = false;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pad.clientWidth, pad.clientHeight);
+});
+
+// 제출
 const f = document.getElementById('f');
 f.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -59,6 +116,9 @@ f.addEventListener('submit', async (e) => {
   const btn = document.getElementById('btn');
   const data = Object.fromEntries(new FormData(f).entries());
   data.consent = f.consent.checked;
+  data.companions = String(data.companions || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  if (!hasInk) { msg.textContent = '서명을 해 주세요.'; return; }
+  data.signature = pad.toDataURL('image/png');
   btn.disabled = true; msg.textContent = '';
   try {
     const res = await fetch('/api/submit', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
