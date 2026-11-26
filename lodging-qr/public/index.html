@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>숙박자 정보 입력</title>
+<style>
+:root{--bg:#fff;--fg:#222;--line:#ccc;--accent:#2563eb;--err:#dc2626}
+@media (prefers-color-scheme: dark){:root{--bg:#111;--fg:#eee;--line:#444;--accent:#60a5fa;--err:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:8px 0}
+p.hint{font-size:.9rem;opacity:.8}
+label{display:block;margin-top:12px;font-weight:600}
+input,select,textarea{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-weight:normal}
+.check input{width:auto;margin-top:4px}
+button{margin-top:20px;width:100%;padding:14px;font-size:17px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:700}
+button:disabled{opacity:.6}
+#msg{margin-top:12px;color:var(--err);white-space:pre-line}
+#done{display:none;text-align:center;padding:40px 0}
+@media (max-width:420px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <div id="form-wrap">
+    <h1>숙박자 정보 입력</h1>
+    <p class="hint">숙박 명부 작성을 위해 아래 정보를 입력해 주세요. 입력하신 정보는 법령에서 정한 기간 동안만 보관됩니다.</p>
+    <form id="f" novalidate>
+      <label>성명 <input name="name" required autocomplete="name"></label>
+      <div class="row">
+        <label>생년월일 <input name="birth" type="date" required></label>
+        <label>국적 <input name="nationality" value="대한민국"></label>
+      </div>
+      <label>연락처 <input name="phone" type="tel" required placeholder="010-0000-0000" autocomplete="tel"></label>
+      <label>주소 <input name="address" required autocomplete="street-address"></label>
+      <div class="row">
+        <label>입실일 <input name="checkIn" type="date" required></label>
+        <label>퇴실일 <input name="checkOut" type="date" required></label>
+      </div>
+      <label>동숙 인원(본인 포함) <input name="headcount" type="number" min="1" max="20" value="1" required></label>
+      <label>차량번호 (선택) <input name="vehicle" placeholder="12가3456"></label>
+      <label>여권번호 (외국인만) <input name="passport"></label>
+      <label class="check"><input type="checkbox" name="consent" required> 개인정보 수집·이용에 동의합니다. (숙박 명부 작성 목적)</label>
+      <button type="submit" id="btn">제출하기</button>
+      <div id="msg"></div>
+    </form>
+  </div>
+  <div id="done"><h1>제출이 완료되었습니다</h1><p>감사합니다. 편안한 숙박 되세요.</p></div>
+</main>
+<script>
+const f = document.getElementById('f');
+f.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('btn');
+  const data = Object.fromEntries(new FormData(f).entries());
+  data.consent = f.consent.checked;
+  btn.disabled = true; msg.textContent = '';
+  try {
+    const res = await fetch('/api/submit', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    const json = await res.json();
+    if (json.ok) {
+      document.getElementById('form-wrap').style.display = 'none';
+      document.getElementById('done').style.display = 'block';
+    } else {
+      msg.textContent = json.errors.join('\n');
+    }
+  } catch (err) {
+    msg.textContent = '전송에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
