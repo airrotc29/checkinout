@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>숙박자 정보 입력 · 입주자 카드</title>
+<style>
+:root{--bg:#f5f6f8;--panel:#fff;--fg:#1c1f24;--sub:#5b6370;--line:#cfd4dc;--accent:#1d4ed8;--err:#dc2626}
+@media (prefers-color-scheme: dark){:root{--bg:#0f1115;--panel:#191c22;--fg:#eceef2;--sub:#a3abb8;--line:#3a404b;--accent:#6ea0ff;--err:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;line-height:1.5}
+main{max-width:600px;margin:0 auto;padding:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+h1{font-size:1.35rem;margin:4px 0 2px}
+.sub{color:var(--sub);font-size:.9rem;margin:0 0 8px}
+label{display:block;margin-top:12px;font-weight:600;font-size:.95rem}
+label small{font-weight:400;color:var(--sub)}
+input,select,textarea{width:100%;padding:11px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)}
+textarea{min-height:64px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-weight:400}
+.check input{width:auto;margin-top:5px}
+.sig-head{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-weight:600;font-size:.95rem}
+#pad{width:100%;height:170px;border:1px dashed var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;margin-top:4px}
+button{padding:13px;font-size:16px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:700;width:100%;margin-top:14px;cursor:pointer}
+button.ghost{background:none;color:var(--accent);border:1px solid var(--accent)}
+button.small{width:auto;padding:5px 12px;font-size:14px;margin:0}
+button.danger{background:none;color:var(--err);border:1px solid var(--err)}
+#msg{color:var(--err);margin-top:10px;white-space:pre-line}
+.hidden{display:none}
+#cardImg{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:10px}
+.note{font-size:.85rem;color:var(--sub);margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+th,td{border:1px solid var(--line);padding:6px;text-align:left}
+.scroll{overflow-x:auto}
+@media (max-width:420px){.row{grid-template-columns:1fr}}
+@media print{body{background:#fff}.noprint{display:none!important}.panel{border:0;padding:0}#cardImg{border:0}}
+</style>
+</head>
+<body>
+<main>
+
+<!-- 1. 입력 화면 -->
+<section id="viewForm" class="panel">
+  <h1 id="title">숙박자 정보 입력</h1>
+  <p class="sub">숙박 명부 작성을 위해 아래 내용을 입력하고 서명해 주세요. 제출하면 입주자 카드가 자동으로 만들어집니다.</p>
+  <form id="f" novalidate>
+    <label>성명 <input name="name" autocomplete="name"></label>
+    <label>연락처 <input name="phone" type="tel" placeholder="010-0000-0000" autocomplete="tel"></label>
+    <label>주소 <input name="address" autocomplete="street-address"></label>
+    <label>차량번호 <small>(없으면 비워 두세요)</small> <input name="vehicle" placeholder="12가3456"></label>
+    <div class="row">
+      <label>입실일 <input name="checkIn" type="date"></label>
+      <label>퇴실일 <input name="checkOut" type="date"></label>
+    </div>
+    <div class="row">
+      <label>호실 <small>(선택)</small> <input name="room" placeholder="예: 201호"></label>
+      <label>방문목적
+        <select name="purpose">
+          <option value="">선택하세요</option>
+          <option>관광</option><option>업무</option><option>가족·친지 방문</option><option>기타</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label>성별 <small>(선택)</small> <select name="gender"><option value="">선택 안 함</option><option>남</option><option>여</option></select></label>
+      <label>생년월일 <small>(선택)</small> <input name="birth" type="date"></label>
+    </div>
+    <div class="row">
+      <label>국적 <input name="nationality" value="대한민국"></label>
+      <label>여권번호 <small>(외국인만)</small> <input name="passport"></label>
+    </div>
+    <label>동반인 이름 <small>(한 줄에 한 명, 선택)</small>
+      <textarea name="companions"></textarea>
+    </label>
+
+    <div class="sig-head"><span>서명 (손가락으로 그려 주세요)</span><button type="button" class="ghost small" id="clearSig">지우기</button></div>
+    <canvas id="pad"></canvas>
+
+    <label class="check"><input type="checkbox" name="consent"> <span>숙박 명부 작성을 위한 개인정보(성명·연락처·주소·차량번호 등) 수집·이용에 동의합니다.</span></label>
+    <button type="submit">제출하고 입주자 카드 만들기</button>
+    <div id="msg"></div>
+  </form>
+</section>
+
+<!-- 2. 완성된 카드 화면 -->
+<section id="viewCard" class="panel hidden">
+  <h1 class="noprint">입주자 카드가 만들어졌습니다</h1>
+  <p class="sub noprint" id="sendGuide">아래 <b>숙소에 보내기</b>를 눌러 카드를 숙소에 전달해 주세요.</p>
+  <img id="cardImg" alt="입주자 카드">
+  <div class="noprint">
+    <button id="btnShare">숙소에 보내기 (공유)</button>
+    <button id="btnSave" class="ghost">카드 이미지 저장</button>
+    <button id="btnPrint" class="ghost">인쇄</button>
+    <button id="btnNew" class="ghost">새로 작성</button>
+    <p class="note">이 카드는 이 기기에만 저장됩니다. 숙소에 전달하려면 공유하거나 화면을 보여 주세요.</p>
+  </div>
+</section>
+
+<!-- 3. 관리 화면 (?admin=1) : 이 기기에 저장된 카드 목록 -->
+<section id="viewAdmin" class="panel hidden">
+  <h1>입주자 카드 목록</h1>
+  <p class="sub">이 기기(브라우저)에서 작성된 카드만 보입니다. 총 <b id="count">0</b>건</p>
+  <button id="btnCsv" class="ghost">엑셀용 CSV 내려받기</button>
+  <button id="btnClear" class="danger">이 기기의 기록 모두 삭제</button>
+  <div class="scroll"><table>
+    <thead><tr><th>카드번호</th><th>성명</th><th>연락처</th><th>차량번호</th><th>입실~퇴실</th><th>카드</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <button id="btnToForm" class="ghost">입력 화면으로</button>
+</section>
+
+</main>
+<script>
+// ───────── 설정: 주소 뒤에 ?lodge=숙소이름 을 붙이면 카드에 숙소 이름이 찍힙니다. ?admin=1 은 관리 화면.
+const params = new URLSearchParams(location.search);
+const LODGE = (params.get('lodge') || '').slice(0, 40);
+const STORE_KEY = 'checkinout_cards_v1';
+const $ = (id) => document.getElementById(id);
+if (LODGE) $('title').textContent = LODGE + ' 숙박자 정보 입력';
+
+// 저장소 (브라우저 차단 시에도 화면은 동작)
+function loadAll() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; } }
+function saveAll(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
+
+// ───────── 서명 캔버스
+const pad = $('pad'), pctx = pad.getContext('2d');
+let drawing = false, hasInk = false;
+function fitPad() {
+  const ratio = window.devicePixelRatio || 1, w = pad.clientWidth, h = pad.clientHeight;
+  if (!w) return;
+  const old = hasInk ? pad.toDataURL() : null;
+  pad.width = w * ratio; pad.height = h * ratio;
+  pctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  pctx.fillStyle = '#fff'; pctx.fillRect(0, 0, w, h);
+  pctx.strokeStyle = '#111'; pctx.lineWidth = 2.5; pctx.lineCap = 'round'; pctx.lineJoin = 'round';
+  if (old) { const im = new Image(); im.onload = () => pctx.drawImage(im, 0, 0, w, h); im.src = old; }
+}
+function at(e) { const r = pad.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+pad.addEventListener('pointerdown', (e) => { e.preventDefault(); drawing = true; pad.setPointerCapture(e.pointerId); const p = at(e); pctx.beginPath(); pctx.moveTo(p.x, p.y); });
+pad.addEventListener('pointermove', (e) => { if (!drawing) return; e.preventDefault(); const p = at(e); pctx.lineTo(p.x, p.y); pctx.stroke(); hasInk = true; });
+pad.addEventListener('pointerup', () => { drawing = false; });
+pad.addEventListener('pointercancel', () => { drawing = false; });
+function clearPad() { hasInk = false; pctx.fillStyle = '#fff'; pctx.fillRect(0, 0, pad.clientWidth, pad.clientHeight); }
+$('clearSig').addEventListener('click', clearPad);
+window.addEventListener('resize', fitPad);
+
+// ───────── 검증
+const PHONE_RE = /^0\d{1,2}-?\d{3,4}-?\d{4}$/;
+const VEHICLE_RE = /^(\d{2,3}[가-힣]\d{4}|[가-힣]{2}\d{2}[가-힣]\d{4})$/;
+function validate(d) {
+  const e = [];
+  if (!d.name) e.push('성명을 입력해 주세요.');
+  if (!d.phone) e.push('연락처를 입력해 주세요.');
+  else if (!PHONE_RE.test(d.phone)) e.push('연락처 형식을 확인해 주세요. (예: 010-1234-5678)');
+  if (!d.address) e.push('주소를 입력해 주세요.');
+  if (d.vehicle && !VEHICLE_RE.test(d.vehicle)) e.push('차량번호 형식을 확인해 주세요. (예: 12가3456)');
+  if (!d.checkIn) e.push('입실일을 선택해 주세요.');
+  if (!d.checkOut) e.push('퇴실일을 선택해 주세요.');
+  if (d.checkIn && d.checkOut && d.checkOut < d.checkIn) e.push('퇴실일이 입실일보다 빠릅니다.');
+  if (!d.purpose) e.push('방문목적을 선택해 주세요.');
+  if (!hasInk) e.push('서명을 해 주세요.');
+  if (!d.consent) e.push('개인정보 수집·이용에 동의해 주세요.');
+  return e;
+}
+
+// ───────── 카드 번호: 날짜-순번 (이 기기 기준)
+function pad2(n) { return String(n).padStart(2, '0'); }
+function stamp(dt) { return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + pad2(dt.getHours()) + ':' + pad2(dt.getMinutes()); }
+function nextCardNo(now) {
+  const day = stamp(now).slice(0, 10).replace(/-/g, '');
+  const n = loadAll().filter((r) => r.cardNo.startsWith(day)).length + 1;
+  return day + '-' + String(n).padStart(3, '0');
+}
+
+// ───────── 입주자 카드 이미지 그리기 (캔버스 → PNG)
+function wrapText(ctx, text, maxW) {
+  const lines = []; let line = '';
+  for (const ch of String(text)) {
+    if (ch === '\n' || ctx.measureText(line + ch).width > maxW) { lines.push(line); line = ch === '\n' ? '' : ch; }
+    else line += ch;
+  }
+  lines.push(line);
+  return lines;
+}
+function drawCard(r) {
+  return new Promise((resolve) => {
+    const W = 800, M = 40, LW = 180, VW = W - M * 2 - LW - 24, LH = 30;
+    const rows = [
+      ['성명', r.name], ['연락처', r.phone], ['주소', r.address], ['차량번호', r.vehicle || '-'],
+      ['입실일 ~ 퇴실일', r.checkIn + ' ~ ' + r.checkOut], ['호실', r.room || '-'], ['방문목적', r.purpose],
+      ['성별 / 생년월일', (r.gender || '-') + ' / ' + (r.birth || '-')],
+      ['국적 / 여권번호', (r.nationality || '-') + ' / ' + (r.passport || '-')],
+      ['동반인', r.companions.length ? r.companions.join(', ') : '-'],
+    ];
+    const c = document.createElement('canvas'), x = c.getContext('2d');
+    x.font = '22px system-ui, "Malgun Gothic", sans-serif';
+    const wrapped = rows.map(([k, v]) => [k, wrapText(x, v, VW)]);
+    const tableH = wrapped.reduce((s, [, ls]) => s + ls.length * LH + 18, 0);
+    const H = 150 + tableH + 250;
+    c.width = W; c.height = H;
+    x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+    x.strokeStyle = '#111'; x.lineWidth = 3; x.strokeRect(14, 14, W - 28, H - 28);
+    x.fillStyle = '#111'; x.textBaseline = 'top';
+    x.font = 'bold 34px system-ui, "Malgun Gothic", sans-serif';
+    x.fillText('입주자 카드 (숙박 명부)', M, 44);
+    x.font = '20px system-ui, "Malgun Gothic", sans-serif'; x.fillStyle = '#444';
+    x.fillText((LODGE ? LODGE + ' · ' : '') + '카드번호 ' + r.cardNo + ' · 접수 ' + r.createdAt, M, 94);
+    let y = 140;
+    x.lineWidth = 1; x.strokeStyle = '#999';
+    for (const [k, ls] of wrapped) {
+      const h = ls.length * LH + 18;
+      x.fillStyle = '#f0f1f3'; x.fillRect(M, y, LW, h);
+      x.strokeRect(M, y, W - M * 2, h); x.beginPath(); x.moveTo(M + LW, y); x.lineTo(M + LW, y + h); x.stroke();
+      x.fillStyle = '#111'; x.font = 'bold 21px system-ui, "Malgun Gothic", sans-serif'; x.fillText(k, M + 10, y + 12);
+      x.font = '22px system-ui, "Malgun Gothic", sans-serif';
+      ls.forEach((ln, i) => x.fillText(ln, M + LW + 12, y + 10 + i * LH));
+      y += h;
+    }
+    y += 22;
+    x.font = 'bold 21px system-ui, "Malgun Gothic", sans-serif'; x.fillStyle = '#111';
+    x.fillText('투숙객 서명', M, y + 6);
+    x.strokeStyle = '#999'; x.strokeRect(M + LW, y, 320, 130);
+    x.font = '17px system-ui, "Malgun Gothic", sans-serif'; x.fillStyle = '#444';
+    wrapText(x, '위 본인은 숙박 명부 작성을 위한 개인정보 수집·이용에 동의하였습니다. (동의 시각 ' + r.createdAt + ')', W - M * 2)
+      .forEach((ln, i) => x.fillText(ln, M, y + 150 + i * 24));
+    const sig = new Image();
+    sig.onload = () => { x.drawImage(sig, M + LW + 5, y + 5, 310, 120); resolve(c.toDataURL('image/png')); };
+    sig.onerror = () => resolve(c.toDataURL('image/png'));
+    sig.src = r.signature;
+  });
+}
+
+// ───────── 화면 전환
+function show(id) { for (const v of ['viewForm', 'viewCard', 'viewAdmin']) $(v).classList.toggle('hidden', v !== id); window.scrollTo(0, 0); if (id === 'viewForm') fitPad(); }
+let current = null; // { record, png }
+async function openCard(r) { current = { record: r, png: await drawCard(r) }; $('cardImg').src = current.png; show('viewCard'); }
+
+// ───────── 제출
+$('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = Object.fromEntries(new FormData(e.target).entries());
+  const d = {
+    name: fd.name.trim(), phone: fd.phone.replace(/\s/g, ''), address: fd.address.trim(), vehicle: fd.vehicle.replace(/\s/g, ''),
+    checkIn: fd.checkIn, checkOut: fd.checkOut, room: fd.room.trim(), purpose: fd.purpose, gender: fd.gender, birth: fd.birth,
+    nationality: fd.nationality.trim(), passport: fd.passport.trim(),
+    companions: fd.companions.split('\n').map((s) => s.trim()).filter(Boolean), consent: e.target.consent.checked,
+  };
+  const errs = validate(d);
+  $('msg').textContent = errs.join('\n');
+  if (errs.length) return;
+  const now = new Date();
+  const record = Object.assign(d, { cardNo: nextCardNo(now), createdAt: stamp(now), signature: pad.toDataURL('image/png') });
+  const list = loadAll(); list.push(record); saveAll(list);
+  await openCard(record);
+});
+
+// ───────── 카드 화면 버튼
+function pngFile() {
+  const bin = atob(current.png.split(',')[1]), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return new File([buf], '입주자카드_' + current.record.cardNo + '.png', { type: 'image/png' });
+}
+function download(file) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+$('btnSave').addEventListener('click', () => download(pngFile()));
+$('btnShare').addEventListener('click', async () => {
+  const file = pngFile();
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '입주자 카드', text: current.record.name + ' 입주자 카드' }); } catch (err) { /* 사용자가 취소 */ }
+  } else {
+    download(file);
+    alert('이 기기는 바로 공유가 안 되어 카드 이미지를 저장했습니다. 저장된 이미지를 숙소에 보내 주세요.');
+  }
+});
+$('btnPrint').addEventListener('click', () => window.print());
+$('btnNew').addEventListener('click', () => { $('f').reset(); clearPad(); $('msg').textContent = ''; show('viewForm'); });
+
+// ───────── 관리 화면
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function renderAdmin() {
+  const list = loadAll();
+  $('count').textContent = list.length;
+  $('rows').innerHTML = list.slice().reverse().map((r) =>
+    '<tr><td>' + esc(r.cardNo) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.phone) + '</td><td>' + esc(r.vehicle || '-') +
+    '</td><td>' + esc(r.checkIn) + ' ~ ' + esc(r.checkOut) + '</td><td><button class="ghost small" data-no="' + esc(r.cardNo) + '">보기</button></td></tr>'
+  ).join('') || '<tr><td colspan="6">저장된 카드가 없습니다.</td></tr>';
+}
+$('rows').addEventListener('click', (e) => {
+  const no = e.target.getAttribute && e.target.getAttribute('data-no');
+  if (!no) return;
+  const r = loadAll().find((x) => x.cardNo === no);
+  if (r) openCard(r);
+});
+$('btnCsv').addEventListener('click', () => {
+  const keys = ['cardNo', 'createdAt', 'name', 'phone', 'address', 'vehicle', 'checkIn', 'checkOut', 'room', 'purpose', 'gender', 'birth', 'nationality', 'passport', 'companions'];
+  const head = ['카드번호', '접수시각', '성명', '연락처', '주소', '차량번호', '입실일', '퇴실일', '호실', '방문목적', '성별', '생년월일', '국적', '여권번호', '동반인'];
+  const body = loadAll().map((r) => keys.map((k) => '"' + String(Array.isArray(r[k]) ? r[k].join(' / ') : (r[k] || '')).replace(/"/g, '""') + '"').join(','));
+  download(new File(['﻿' + [head.join(',')].concat(body).join('\n')], '입주자카드_목록.csv', { type: 'text/csv' }));
+});
+$('btnClear').addEventListener('click', () => { if (confirm('이 기기에 저장된 카드 기록을 모두 삭제할까요? 되돌릴 수 없습니다.')) { saveAll([]); renderAdmin(); } });
+$('btnToForm').addEventListener('click', () => show('viewForm'));
+
+// ───────── 시작
+if (params.get('admin') === '1') { renderAdmin(); show('viewAdmin'); } else { show('viewForm'); }
+</script>
+</body>
+</html>
