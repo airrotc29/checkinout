@@ -10,7 +10,41 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 const RETENTION_DAYS = Number(process.env.RETENTION_DAYS || 365);
 const DATA_FILE = path.join(__dirname, 'data', 'guests.jsonl');
 const PUBLIC_DIR = path.join(__dirname, 'public');
-fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true }); // data 폴더가 없으면 생성
+const CARD_DIR = path.join(__dirname, 'data', 'cards');
+fs.mkdirSync(CARD_DIR, { recursive: true }); // data, data/cards 폴더 생성
+
+// 입주자 카드 HTML 생성 (제출 시 자동 저장, 관리자 화면에서도 생성)
+function renderCard(r) {
+  const row = (k, v) => `<tr><th>${k}</th><td>${esc(v || '-')}</td></tr>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>입주자 카드 ${esc(r.cardNo)}</title>
+<style>body{font-family:system-ui,sans-serif;color:#111;background:#f4f4f4;margin:0;padding:16px}
+.card{max-width:640px;margin:0 auto;background:#fff;border:2px solid #222;border-radius:10px;padding:20px}
+h1{font-size:1.4rem;margin:0 0 4px}.no{color:#555;font-size:.9rem;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:15px}th,td{border:1px solid #bbb;padding:7px;text-align:left;vertical-align:top}
+th{width:30%;background:#f1f1f1}.sig{margin-top:14px;border:1px solid #bbb;padding:8px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.sig img{width:200px;height:auto;background:#fff}.foot{font-size:12px;color:#555;margin-top:12px;line-height:1.5}
+.btn{margin:12px auto;display:block;padding:10px 18px;font-size:15px}
+@media print{body{background:#fff;padding:0}.btn{display:none}.card{border:1px solid #000}}</style></head>
+<body><div class="card">
+<h1>입주자 카드 (숙박 명부)</h1><div class="no">카드 번호 ${esc(r.cardNo)} · 접수 ${esc(r.receivedAt.slice(0,16).replace('T',' '))}</div>
+<table>
+${row('성명', r.name)}${row('연락처', r.phone)}${row('주소', r.address)}${row('차량번호', r.vehicle)}
+${row('입실일', r.checkIn)}${row('퇴실일', r.checkOut)}${row('방문목적', r.purpose)}
+${row('성별', r.gender)}${row('생년월일', r.birth)}${row('국적', r.nationality)}${row('여권번호', r.passport)}
+${row('동반인', (r.companions||[]).join(', '))}
+</table>
+<div class="sig"><div>투숙객 서명</div>${r.signature ? `<img src="${r.signature}" alt="서명">` : ''}</div>
+<div class="foot">개인정보 수집·이용에 동의하였습니다(동의 시각 ${esc(r.consentAt.slice(0,16).replace('T',' '))}). 수집된 정보는 관계 법령에서 정한 기간 동안만 보관 후 파기됩니다.</div>
+</div><button class="btn" onclick="window.print()">인쇄</button></body></html>`;
+}
+
+// 카드 번호: 날짜-순번 (예: 20261126-001)
+function nextCardNo(now) {
+  const d = now.slice(0, 10).replace(/-/g, '');
+  const n = readAll().filter((r) => r.cardNo && r.cardNo.startsWith(d)).length + 1;
+  return `${d}-${String(n).padStart(3, '0')}`;
+}
 
 if (!ADMIN_TOKEN) {
   console.error('ADMIN_TOKEN 환경변수를 설정하세요. 예: ADMIN_TOKEN=secret node server.js');
@@ -65,6 +99,10 @@ function purgeExpired() {
   if (!fs.existsSync(DATA_FILE)) return;
   const cutoff = Date.now() - RETENTION_DAYS * 86400000;
   const kept = readAll().filter((r) => new Date(r.receivedAt).getTime() >= cutoff);
+  const keptIds = new Set(kept.map((r) => r.id));
+  for (const r of readAll()) {
+    if (!keptIds.has(r.id)) { try { fs.unlinkSync(path.join(CARD_DIR, r.id + '.html')); } catch (e) {} }
+  }
   fs.writeFileSync(DATA_FILE, kept.map((r) => JSON.stringify(r)).join('\n') + (kept.length ? '\n' : ''));
 }
 
@@ -74,7 +112,7 @@ function readAll() {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const CSV_KEYS = ['receivedAt', 'name', 'phone', 'address', 'vehicle', 'checkIn', 'checkOut', 'purpose', 'gender', 'birth', 'nationality', 'passport', 'companions', 'consentAt'];
+const CSV_KEYS = ['cardNo', 'receivedAt', 'name', 'phone', 'address', 'vehicle', 'checkIn', 'checkOut', 'purpose', 'gender', 'birth', 'nationality', 'passport', 'companions', 'consentAt'];
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -109,7 +147,10 @@ const server = http.createServer(async (req, res) => {
         consentAt: now,
       };
       purgeExpired();
+      record.id = now.replace(/[:.]/g, '-') + '-' + require('crypto').randomBytes(3).toString('hex');
+      record.cardNo = nextCardNo(now);
       fs.appendFileSync(DATA_FILE, JSON.stringify(record) + '\n');
+      fs.writeFileSync(path.join(CARD_DIR, record.id + '.html'), renderCard(record));
       return send(res, 200, 'application/json', JSON.stringify({ ok: true }));
     } catch (e) {
       return send(res, 400, 'application/json', JSON.stringify({ ok: false, errors: ['잘못된 요청'] }));
@@ -122,7 +163,7 @@ const server = http.createServer(async (req, res) => {
     const rows = all.slice().reverse().map((r) => `<tr>
       <td>${esc(r.receivedAt.slice(0, 16).replace('T', ' '))}</td><td>${esc(r.name)}</td><td>${esc(r.phone)}</td>
       <td>${esc(r.vehicle)}</td><td>${esc(r.address)}</td><td>${esc(r.checkIn)} ~ ${esc(r.checkOut)}</td>
-      <td>${esc(r.purpose)}</td><td>${esc(r.companions.length)}명 ${esc(r.companions.join(', '))}</td><td>${r.signature ? `<img src="${r.signature}" alt="서명" style="width:120px;height:auto;background:#fff;border:1px solid #ccc">` : '-'}</td></tr>`).join('');
+      <td>${esc(r.purpose)}</td><td>${esc(r.companions.length)}명 ${esc(r.companions.join(', '))}</td><td><a href="/admin/card?token=${encodeURIComponent(ADMIN_TOKEN)}&id=${encodeURIComponent(r.id)}" target="_blank">카드 보기</a></td><td>${r.signature ? `<img src="${r.signature}" alt="서명" style="width:120px;height:auto;background:#fff;border:1px solid #ccc">` : '-'}</td></tr>`).join('');
     const formUrl = `${url.origin}/`;
     const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>숙박자 명부 관리</title>
@@ -135,9 +176,16 @@ th,td{border:1px solid #ccc;padding:6px;text-align:left}th{background:#f3f3f3}#q
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>new QRCode(document.getElementById('qr'), {text: ${JSON.stringify(formUrl)}, width: 180, height: 180});</script>
 <p>총 ${all.length}건 · <a href="/admin/csv?token=${encodeURIComponent(ADMIN_TOKEN)}">CSV 다운로드</a></p>
-<div style="overflow-x:auto"><table><thead><tr><th>접수시각</th><th>성명</th><th>연락처</th><th>차량번호</th><th>주소</th><th>입실~퇴실</th><th>방문목적</th><th>동반인</th><th>서명</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="9">아직 접수된 정보가 없습니다.</td></tr>'}</tbody></table></div></body></html>`;
+<div style="overflow-x:auto"><table><thead><tr><th>접수시각</th><th>성명</th><th>연락처</th><th>차량번호</th><th>주소</th><th>입실~퇴실</th><th>방문목적</th><th>동반인</th><th>카드</th><th>서명</th></tr></thead>
+<tbody>${rows || '<tr><td colspan="10">아직 접수된 정보가 없습니다.</td></tr>'}</tbody></table></div></body></html>`;
     return send(res, 200, 'text/html; charset=utf-8', html);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/admin/card') {
+    if (url.searchParams.get('token') !== ADMIN_TOKEN) return send(res, 401, 'text/plain; charset=utf-8', '인증 실패');
+    const r = readAll().find((x) => x.id === url.searchParams.get('id'));
+    if (!r) return send(res, 404, 'text/plain; charset=utf-8', '카드 없음');
+    return send(res, 200, 'text/html; charset=utf-8', renderCard(r));
   }
 
   if (req.method === 'GET' && url.pathname === '/admin/csv') {
